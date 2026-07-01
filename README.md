@@ -61,16 +61,44 @@ interface Calculator {
 
 ### 2. Generate
 
-```bash
-# a) Cap'n Proto Go bindings (calculator.capnp.go)
-capnp compile -I <capnp-std> -ogo calculator.capnp
+One command produces both the Cap'n Proto bindings and the capwrap wrapper —
+`capwrap-gen` runs `capnp compile` for you:
 
-# b) capwrap wrapper (calculator.capwrap.go)
+```bash
 capwrap-gen calculator.capnp
+#  wrote calculator.capwrap.go
+#  wrote calculator.capnp.go
 ```
 
-`capwrap-gen` warns clearly if the Cap'n Proto bindings or the `capnp` compiler
-are missing.
+Pass `-capnp=false` to skip the compile step (e.g. in a Makefile that runs
+`capnp` itself), or `-I <dir>` to override the auto-detected std include path.
+If `capnp` is not installed, capwrap-gen still writes the wrapper and prints how
+to generate the bindings.
+
+#### Prefer protobuf syntax?
+
+`capwrap-gen` also accepts a proto3 `.proto` file. It is translated to a sibling
+`.capnp` and everything else is the same:
+
+```proto
+// math.proto
+syntax = "proto3";
+option go_package = "your/module/mathpb;mathpb";
+
+service MathService {
+  rpc Add(AddRequest) returns (AddResponse);
+}
+message AddRequest  { int64 a = 1; int64 b = 2; }
+message AddResponse { int64 sum = 1; }
+```
+
+```bash
+capwrap-gen math.proto   # -> math.capnp, math.capnp.go, math.capwrap.go
+```
+
+Each `rpc M(Req) returns (Resp)` is flattened: the fields of the request/response
+messages become the method's params/results. Unary methods with scalar/string/
+bytes fields are supported today.
 
 ### 3. Server — a plain Go type
 
@@ -129,19 +157,22 @@ add(123, 456) -> 579
 | `runtime/`             | Small `Dial` / `Serve` runtime (package capwrap) |
 | `cmd/capwrap-gen/`     | The wrapper generator CLI                        |
 | `internal/generator/`  | Codegen: `.capnp` parser + templates             |
+| `internal/protoconv/`  | `.proto` → `.capnp` translation                  |
 | `examples/calculator/` | End-to-end schema, server and client             |
 | `docs/`                | Design notes and Cap'n Proto vs gRPC             |
 
-## MVP status & roadmap to v0.1.0
+## Status & roadmap
 
-Supported today: single-interface services, unary methods, scalar/`Text`/`Data`
-fields, blocking client calls with `context`. Methods that use lists, nested
-structs, unions, or capability parameters generate a "not supported" server stub
-and are omitted from the typed client, so the rest of a service still works.
+Released (`v0.0.1`): single-interface services, unary methods, scalar/`Text`/
+`Data` fields, blocking client calls with `context`, `.proto` input, and
+one-command codegen (auto `capnp compile`). Methods using lists, nested structs,
+unions, or capability parameters generate a "not supported" server stub and are
+omitted from the typed client, so the rest of a service still works.
 
-Planned for v0.1.0:
+Planned for `v0.1.0`:
 
-- list and nested-struct fields,
+- list and nested-struct fields (Cap'n Proto `List` / struct, proto `repeated` /
+  message fields),
 - async client calls and promise pipelining,
 - unary interceptors (logging/metrics/recovery),
 - a status/error-code model,
