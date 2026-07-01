@@ -18,8 +18,17 @@ import (
 	"github.com/Huy-8bit/capwrap/internal/protoconv"
 )
 
+type options struct {
+	out     string // -o output file
+	compile bool   // -capnp: run `capnp compile` to also produce the bindings
+	include string // -I: Cap'n Proto std include dir (auto-detected if empty)
+}
+
 func main() {
-	out := flag.String("o", "", "output file (default: <schema>.capwrap.go beside the input)")
+	var opts options
+	flag.StringVar(&opts.out, "o", "", "output file (default: <schema>.capwrap.go beside the input)")
+	flag.BoolVar(&opts.compile, "capnp", true, "also run `capnp compile` to generate the Cap'n Proto bindings")
+	flag.StringVar(&opts.include, "I", "", "Cap'n Proto std include dir (auto-detected via `go list` if empty)")
 	flag.Usage = usage
 	flag.Parse()
 
@@ -27,13 +36,13 @@ func main() {
 		usage()
 		os.Exit(2)
 	}
-	if err := run(flag.Arg(0), *out); err != nil {
+	if err := run(flag.Arg(0), opts); err != nil {
 		fmt.Fprintln(os.Stderr, "capwrap-gen:", err)
 		os.Exit(1)
 	}
 }
 
-func run(schemaPath, outPath string) error {
+func run(schemaPath string, opts options) error {
 	switch filepath.Ext(schemaPath) {
 	case ".capnp":
 	case ".proto":
@@ -55,9 +64,9 @@ func run(schemaPath, outPath string) error {
 		return err
 	}
 
+	outPath := opts.out
 	if outPath == "" {
-		base := strings.TrimSuffix(schemaPath, ".capnp")
-		outPath = base + ".capwrap.go"
+		outPath = strings.TrimSuffix(schemaPath, ".capnp") + ".capwrap.go"
 	}
 	if err := os.WriteFile(outPath, code, 0o644); err != nil {
 		return err
@@ -67,8 +76,56 @@ func run(schemaPath, outPath string) error {
 	for _, s := range skipped {
 		fmt.Fprintf(os.Stderr, "warning: skipped %s (unsupported by the MVP generator)\n", s)
 	}
+
+	if opts.compile {
+		return compileCapnp(schemaPath, opts.include)
+	}
 	checkCapnpArtifacts(schemaPath)
 	return nil
+}
+
+// compileCapnp runs `capnp compile -ogo` to produce the *.capnp.go bindings the
+// generated wrapper depends on. A missing compiler is reported but not fatal —
+// the wrapper is already written and can be compiled later.
+func compileCapnp(capnpPath, include string) error {
+	if _, err := exec.LookPath("capnp"); err != nil {
+		fmt.Fprintln(os.Stderr, "\nnote: `capnp` not found, skipping binding generation.")
+		fmt.Fprintln(os.Stderr, "Install it (https://capnproto.org/install.html), then run:")
+		fmt.Fprintf(os.Stderr, "  capnp compile -ogo %s\n", capnpPath)
+		return nil
+	}
+
+	if include == "" {
+		include = detectCapnpStd(filepath.Dir(capnpPath))
+	}
+	args := []string{"compile"}
+	if include != "" {
+		args = append(args, "-I", include)
+	}
+	args = append(args, "-ogo", capnpPath)
+
+	cmd := exec.Command("capnp", args...)
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("capnp compile: %w (need capnpc-go on PATH; try: go install capnproto.org/go/capnp/v3/capnpc-go@latest)", err)
+	}
+	fmt.Printf("wrote %s\n", strings.TrimSuffix(capnpPath, ".capnp")+".capnp.go")
+	return nil
+}
+
+// detectCapnpStd locates the Cap'n Proto std schema dir via the module cache.
+func detectCapnpStd(dir string) string {
+	cmd := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", "capnproto.org/go/capnp/v3")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	std := filepath.Join(strings.TrimSpace(string(out)), "std")
+	if _, err := os.Stat(filepath.Join(std, "go.capnp")); err != nil {
+		return ""
+	}
+	return std
 }
 
 // translateProto converts a .proto file into a sibling .capnp file and returns
