@@ -11,24 +11,23 @@ type typeInfo struct {
 	GoType    string // Go type in the generated request/response struct
 	GetterErr bool   // capnp getter returns (T, error)
 	SetterErr bool   // capnp setter returns error
-	Suffix    string // appended to accessor names on capnpc-go name collisions
 }
 
 // scalarTypes maps every capnp type the MVP generator can wrap.
 var scalarTypes = map[capnpType]typeInfo{
-	"Text":    {GoType: "string", GetterErr: true, SetterErr: true, Suffix: "Text"},
-	"Data":    {GoType: "[]byte", GetterErr: true, SetterErr: true, Suffix: "Data"},
-	"Bool":    {GoType: "bool", Suffix: "Bool"},
-	"Int8":    {GoType: "int8", Suffix: "Int8"},
-	"Int16":   {GoType: "int16", Suffix: "Int16"},
-	"Int32":   {GoType: "int32", Suffix: "Int32"},
-	"Int64":   {GoType: "int64", Suffix: "Int64"},
-	"UInt8":   {GoType: "uint8", Suffix: "Uint8"},
-	"UInt16":  {GoType: "uint16", Suffix: "Uint16"},
-	"UInt32":  {GoType: "uint32", Suffix: "Uint32"},
-	"UInt64":  {GoType: "uint64", Suffix: "Uint64"},
-	"Float32": {GoType: "float32", Suffix: "Float32"},
-	"Float64": {GoType: "float64", Suffix: "Float64"},
+	"Text":    {GoType: "string", GetterErr: true, SetterErr: true},
+	"Data":    {GoType: "[]byte", GetterErr: true, SetterErr: true},
+	"Bool":    {GoType: "bool"},
+	"Int8":    {GoType: "int8"},
+	"Int16":   {GoType: "int16"},
+	"Int32":   {GoType: "int32"},
+	"Int64":   {GoType: "int64"},
+	"UInt8":   {GoType: "uint8"},
+	"UInt16":  {GoType: "uint16"},
+	"UInt32":  {GoType: "uint32"},
+	"UInt64":  {GoType: "uint64"},
+	"Float32": {GoType: "float32"},
+	"Float64": {GoType: "float64"},
 }
 
 func (t capnpType) info() (typeInfo, bool) {
@@ -41,11 +40,17 @@ func (t capnpType) supported() bool {
 	return ok
 }
 
-// reservedAccessors are methods present on every capnpc-go struct; a field
-// whose PascalCase name collides with one gets its type name appended.
+// reservedAccessors are methods present on every capnpc-go struct. A field
+// whose PascalCase name collides with one gets a trailing underscore, matching
+// capnpc-go (e.g. field "message" becomes accessor "Message_").
 var reservedAccessors = map[string]bool{
-	"Message": true,
-	"Segment": true,
+	"Message":       true,
+	"Segment":       true,
+	"String":        true,
+	"ToPtr":         true,
+	"IsValid":       true,
+	"EncodeAsPtr":   true,
+	"DecodeFromPtr": true,
 }
 
 // pascal converts a schema field/method name to exported Go form.
@@ -57,13 +62,11 @@ func pascal(name string) string {
 }
 
 // accessor returns the getter name capnpc-go generates for a field, applying
-// the collision rule (e.g. "message" :Text becomes "MessageText").
+// the collision rule (e.g. "message" becomes "Message_").
 func accessor(f field) string {
 	name := pascal(f.Name)
 	if reservedAccessors[name] {
-		if info, ok := f.Type.info(); ok {
-			name += info.Suffix
-		}
+		name += "_"
 	}
 	return name
 }

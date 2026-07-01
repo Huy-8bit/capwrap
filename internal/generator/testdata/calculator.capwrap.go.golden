@@ -64,7 +64,7 @@ func (s calculatorServerAdapter) SayHello(ctx context.Context, call Calculator_s
 	if err != nil {
 		return err
 	}
-	if err := results.SetMessageText(resp.Message); err != nil {
+	if err := results.SetMessage_(resp.Message); err != nil {
 		return err
 	}
 	return nil
@@ -126,7 +126,7 @@ func (c *calculatorClient) SayHello(ctx context.Context, req *SayHelloRequest) (
 	if err != nil {
 		return nil, capwrap.WrapError(err)
 	}
-	retMessage, err := res.MessageText()
+	retMessage, err := res.Message_()
 	if err != nil {
 		return nil, capwrap.WrapError(err)
 	}
