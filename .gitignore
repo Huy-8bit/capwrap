@@ -1,0 +1,11 @@
+# Binaries
+/bin/
+capwrap-gen
+
+# Go build/test artifacts
+*.test
+*.out
+coverage.txt
+
+# Editor/OS
+.DS_Store
