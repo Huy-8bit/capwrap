@@ -1,6 +1,6 @@
 # Binaries
 /bin/
-capwrap-gen
+/capwrap-gen
 
 # Go build/test artifacts
 *.test
